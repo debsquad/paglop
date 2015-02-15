@@ -22,12 +22,12 @@ var (
 )
 
 func handleMsg(msg *Message) {
-	output := chain.Generate(15)
+	output := chain.GenerateOnTopic(32, msg.Body)
 	if strings.HasPrefix(output, "ACTION ") {
 		output = output[8:]
 		privAction(msg.ReplyTo, output)
 	} else {
-		IRCPrivMsg(msg.ReplyTo, output)
+		privMsg(msg.ReplyTo, output)
 	}
 }
 

@@ -92,6 +92,7 @@ func connectionReader(conn net.Conn, incoming chan string, disconnect chan strin
 		}
 
 		data = strings.Trim(data, "\r\n")
+		log.Printf("< %s", data)
 
 		switch ConnectionState {
 		case ConnStateWaitingForHello:
@@ -101,14 +102,16 @@ func connectionReader(conn net.Conn, incoming chan string, disconnect chan strin
 			// server likes us, we move on to channel joining
 			// state.
 			code := parseServerMessageCode(data)
+			log.Printf("Server Message Code: %d", code)
 
 			switch code {
 			case ErrCodeNoNicknameGiven, ErrCodeErroneusNickname, ErrCodeNicknameInUse, ErrCodeNickCollision:
 				cfg.IRCNickname = cfg.IRCNickname + "_"
 				ConnectionState = ConnStateInit
-			default:
+			case 1:
 				ConnectionState = ConnStateLive
 				incoming <- data
+			default:
 			}
 
 		case ConnStateLive:
@@ -121,7 +124,6 @@ func connectionReader(conn net.Conn, incoming chan string, disconnect chan strin
 				continue
 			}
 
-			log.Printf("< %s", data)
 			incoming <- data
 		// Standby
 		default:
@@ -141,6 +143,7 @@ func connectionWriter(conn net.Conn, outgoing chan string) {
 			ConnectionState = ConnStateWaitingForHello
 		case ConnStateLive:
 			for msg := range outgoing {
+				log.Printf("> %s", msg)
 				fmt.Fprintf(conn, "%s\r\n", msg)
 			}
 		// Standby

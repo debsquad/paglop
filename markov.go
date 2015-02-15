@@ -45,6 +45,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"math/rand"
 	"os"
 	"strings"
@@ -77,6 +78,7 @@ func (p Leader) Unshift(word string) {
 type Chain struct {
 	forward   map[string][]string
 	backward  map[string][]string
+	words     map[string]uint64
 	leaderLen int
 }
 
@@ -85,6 +87,7 @@ func NewChain(leaderLen int) *Chain {
 	return &Chain{
 		forward:   make(map[string][]string),
 		backward:  make(map[string][]string),
+		words:     make(map[string]uint64),
 		leaderLen: leaderLen,
 	}
 }
@@ -121,6 +124,12 @@ func BadWord(word string) bool {
 	return false
 }
 
+// AddWord adds a new word to the word registry or increase its score.  This
+// registry is used to determine the topic of a sentence.
+func (chain *Chain) AddWord(word string) {
+	chain.words[word] = chain.words[word] + 1
+}
+
 // AddLine adds a new line to the markov chain.
 func (chain *Chain) AddLine(line string) {
 	var a, b, c string
@@ -133,6 +142,7 @@ func (chain *Chain) AddLine(line string) {
 		if BadWord(word) {
 			continue
 		}
+		chain.AddWord(word)
 		a, b, c = b, c, word
 		fKey := a + " " + b
 		bKey := b + " " + c
@@ -155,6 +165,39 @@ func (chain *Chain) Build(r io.Reader) {
 	}
 }
 
+func (chain *Chain) GetRandomTupleForWord(word string) string {
+	var tuples []string
+
+	for t := range chain.forward {
+		if strings.Contains(t, word) {
+			tuples = append(tuples, t)
+		}
+	}
+
+	if len(tuples) == 0 {
+		return word
+	} else if len(tuples) == 1 {
+		return tuples[0]
+	}
+
+	return tuples[rand.Intn(len(tuples))]
+}
+
+func (chain *Chain) GetLessCommonWord(sentence string) string {
+	var lowest uint64 = 9999999
+	var chosen string
+
+	for _, word := range strings.Fields(sentence) {
+		score := chain.words[word]
+		if score > 0 && score < lowest {
+			lowest = score
+			chosen = word
+		}
+	}
+
+	return chosen
+}
+
 // GenerateCore returns a list of at most n words generated from Chain.
 func (chain *Chain) GenerateCore(forward bool, start string, n int) []string {
 	p := make(Leader, chain.leaderLen)
@@ -162,6 +205,7 @@ func (chain *Chain) GenerateCore(forward bool, start string, n int) []string {
 		p = strings.Fields(start)
 	}
 	var words []string
+	words = append(words, p...)
 	for i := 0; i < n; i++ {
 		var choices []string
 		if forward {
@@ -188,8 +232,11 @@ func (chain *Chain) GenerateCore(forward bool, start string, n int) []string {
 		words = append(words, next)
 
 		// We have at least 15 words and we have a period, let's stop.
-		if len(words) > 15 && strings.HasSuffix(next, ".") {
-			break
+		if len(words) > 10 {
+			lastchr := next[len(next)-1]
+			if lastchr == '.' || lastchr == '!' || lastchr == '?' {
+				break
+			}
 		}
 	}
 
@@ -199,6 +246,19 @@ func (chain *Chain) GenerateCore(forward bool, start string, n int) []string {
 // Generate returns a string of at most n words generated from Chain.
 func (chain *Chain) Generate(n int) string {
 	words := chain.GenerateCore(true, "", n)
+	return strings.Join(words, " ")
+}
+
+// GenerateOnTopic returns a string of at most n words generated from Chain
+// using the least common word in the provided sentence.
+func (chain *Chain) GenerateOnTopic(n int, sentence string) string {
+	word := chain.GetLessCommonWord(sentence)
+	log.Printf("Chosen word: %s", word)
+
+	tuple := chain.GetRandomTupleForWord(word)
+	log.Printf("Chosen tuple: %s", tuple)
+
+	words := chain.GenerateCore(true, tuple, n)
 	return strings.Join(words, " ")
 }
 

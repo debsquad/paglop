@@ -4,6 +4,10 @@
 
 package main
 
+import (
+	"strings"
+)
+
 // MsgType describes the type of IRC message.
 type MsgType int
 
@@ -47,5 +51,55 @@ func NewFatalMessage(body string) *Message {
 	msg := NewMessage()
 	msg.Type = MsgTypeFatal
 	msg.Body = body
+	return msg
+}
+
+// NewMessageFromPrivMsg allocates a new Message given an existing PrivMsg.
+func NewMessageFromPrivMsg(privmsg *PrivMsg) *Message {
+	msg := NewMessage()
+
+	if privmsg.Direct {
+		msg.Type = MsgTypeIRCPrivate
+	} else {
+		// Channel messages have to be prefixes with the bot's nick.
+		if !privmsg.Addressed {
+			return nil
+		}
+		msg.Type = MsgTypeIRCChannel
+	}
+
+	msg.UserID = privmsg.Nick
+	msg.Body = privmsg.Body
+	msg.ReplyTo = privmsg.ReplyTo
+
+	tokens := strings.Split(msg.Body, " ")
+	if len(tokens) > 0 {
+		msg.Command = tokens[0]
+
+		if len(tokens) > 1 {
+			msg.Args = append(msg.Args, tokens[1:]...)
+		}
+	}
+
+	return msg
+}
+
+// NewMessageFromIRCLine creates a new Message based on the raw IRC line.
+func NewMessageFromIRCLine(line string) *Message {
+	privmsg := NewPrivMsg(line, cfg.IRCNickname)
+	if privmsg == nil {
+		// Not a PRIVMSG.
+		return nil
+	}
+
+	// Check if we should ignore this message.
+	for _, ignore := range cfg.Ignore {
+		if ignore == privmsg.Nick {
+			return nil
+		}
+	}
+
+	msg := NewMessageFromPrivMsg(privmsg)
+
 	return msg
 }
