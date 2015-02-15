@@ -50,10 +50,23 @@ func start() error {
 		select {
 		case data := <-IRCIncoming:
 			// Incoming IRC traffic.
-			msg := NewMessageFromIRCLine(data)
-			if msg != nil {
-				handleMsg(msg)
+			privmsg := NewPrivMsg(data, cfg.IRCNickname)
+			if privmsg == nil {
+				continue
 			}
+
+			if privmsg.Action {
+				chain.AddLine("ACTION " + privmsg.Body)
+			} else {
+				chain.AddLine(privmsg.Body)
+			}
+
+			msg := NewMessageFromPrivMsg(privmsg)
+			if msg == nil {
+				continue
+			}
+
+			handleMsg(msg)
 		case data := <-IRCDisconnect:
 			// Server has disconnected, we're done.
 			log.Printf("Disconnected: %s", data)
