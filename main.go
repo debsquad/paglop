@@ -6,6 +6,7 @@ package main
 import (
 	"log"
 	"os"
+	"strings"
 )
 
 // These channels represent the lines coming and going to the IRC server (from
@@ -16,9 +17,23 @@ var (
 	IRCDisconnect = make(chan string)
 )
 
+var (
+	chain *Chain
+)
+
+func handleMsg(msg *Message) {
+	output := chain.Generate(15)
+	if strings.HasPrefix(output, "ACTION ") {
+		output = output[8:]
+		privAction(msg.ReplyTo, output)
+	} else {
+		IRCPrivMsg(msg.ReplyTo, output)
+	}
+}
+
 func start() error {
 	log.Printf("initialize markov chain...")
-	chain := initializeMarkovChain()
+	chain = initializeMarkovChain()
 
 	log.Printf("connecting...")
 	conn, err := connect()
@@ -37,8 +52,7 @@ func start() error {
 			// Incoming IRC traffic.
 			msg := NewMessageFromIRCLine(data)
 			if msg != nil {
-				output := chain.Generate(15)
-				IRCPrivMsg(msg.ReplyTo, output)
+				handleMsg(msg)
 			}
 		case data := <-IRCDisconnect:
 			// Server has disconnected, we're done.
