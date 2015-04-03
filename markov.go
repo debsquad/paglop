@@ -42,7 +42,6 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -229,14 +228,27 @@ func (chain *Chain) GenerateCore(forward bool, start string, n int) []string {
 			p.Unshift(next)
 		}
 
-		words = append(words, next)
+		if forward {
+			words = append(words, next)
+		} else {
+			words = append([]string{next}, words...)
+		}
 
 		// We have at least 15 words and we have a period, let's stop.
 		if len(words) > 10 {
-			lastchr := next[len(next)-1]
-			if lastchr == '.' || lastchr == '!' || lastchr == '?' {
-				break
+			if forward {
+				lastchr := next[len(next)-1]
+				if lastchr == '.' || lastchr == '!' || lastchr == '?' {
+					break
+				}
 			}
+			// TODO check if upper cased.
+			// else {
+			// 	firstchr := next[0]
+			// 	if firstchr.IsUpper() {
+			// 		break
+			// 	}
+			// }
 		}
 	}
 
@@ -258,7 +270,11 @@ func (chain *Chain) GenerateOnTopic(n int, sentence string) string {
 	tuple := chain.GetRandomTupleForWord(word)
 	log.Printf("Chosen tuple: %s", tuple)
 
-	words := chain.GenerateCore(true, tuple, n)
+	bwords := chain.GenerateCore(false, tuple, n)
+	fwords := chain.GenerateCore(true, tuple, n)
+	fwords = fwords[2:]
+
+	words := append(bwords, fwords...)
 	return strings.Join(words, " ")
 }
 
@@ -281,8 +297,6 @@ func getReversedArray(words []string) []string {
 // GenerateBackward builds sentences backward.
 func (chain *Chain) GenerateBackward(end string, n int) string {
 	words := chain.GenerateCore(false, end, n)
-	fmt.Printf("backward: %s\n", words)
-	words = getReversedArray(words)
 	return strings.Join(words, " ")
 }
 
