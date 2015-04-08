@@ -49,6 +49,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // Leader is a Markov chain prefix of one or more words.
@@ -235,20 +236,18 @@ func (chain *Chain) GenerateCore(forward bool, start string, n int) []string {
 		}
 
 		// We have at least 15 words and we have a period, let's stop.
-		if len(words) > 10 {
+		if len(words) > 6 {
 			if forward {
 				lastchr := next[len(next)-1]
 				if lastchr == '.' || lastchr == '!' || lastchr == '?' {
 					break
 				}
+			} else {
+				firstchr := ([]rune(next))[0]
+				if unicode.IsUpper(firstchr) {
+					break
+				}
 			}
-			// TODO check if upper cased.
-			// else {
-			// 	firstchr := next[0]
-			// 	if firstchr.IsUpper() {
-			// 		break
-			// 	}
-			// }
 		}
 	}
 
@@ -272,7 +271,11 @@ func (chain *Chain) GenerateOnTopic(n int, sentence string) string {
 
 	bwords := chain.GenerateCore(false, tuple, n)
 	fwords := chain.GenerateCore(true, tuple, n)
-	fwords = fwords[2:]
+	if len(fwords) > 2 {
+		fwords = fwords[2:]
+	} else {
+		fwords = nil
+	}
 
 	words := append(bwords, fwords...)
 	return strings.Join(words, " ")
