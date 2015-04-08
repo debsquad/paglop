@@ -164,6 +164,8 @@ func (chain *Chain) Build(r io.Reader) {
 	}
 }
 
+// GetRandomTupleForWord will return a tuple from the loaded Markov chain given
+// a single word.
 func (chain *Chain) GetRandomTupleForWord(word string) string {
 	var tuples []string
 
@@ -182,6 +184,8 @@ func (chain *Chain) GetRandomTupleForWord(word string) string {
 	return tuples[rand.Intn(len(tuples))]
 }
 
+// GetLessCommonWord picks the least common word from the given sentence.  This
+// is useful when trying to identify the subject of a sentence.
 func (chain *Chain) GetLessCommonWord(sentence string) string {
 	var lowest uint64 = 9999999
 	var chosen string
@@ -300,10 +304,10 @@ func (chain *Chain) GenerateBackward(end string, n int) string {
 	return strings.Join(words, " ")
 }
 
-func initializeMarkovChain() *Chain {
+func initializeMarkovChain(path string) *Chain {
 	rand.Seed(time.Now().UnixNano())
 
-	fileInfos, err := ioutil.ReadDir("data")
+	fileInfos, err := ioutil.ReadDir(path)
 	if err != nil {
 		println("initializeMarkovChain ReadDir: " + err.Error())
 		os.Exit(1)
@@ -316,7 +320,7 @@ func initializeMarkovChain() *Chain {
 		if !strings.HasSuffix(filename, ".txt") {
 			continue
 		}
-		file, err := os.Open("data/" + filename)
+		file, err := os.Open(path + "/" + filename)
 		if err != nil {
 			println("initializeMarkovChain Open: " + err.Error())
 			os.Exit(1)

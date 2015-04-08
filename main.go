@@ -31,9 +31,28 @@ func handleMsg(msg *Message) {
 	}
 }
 
+func logLine(channel, line string) {
+	filename := cfg.MarkovDataPath + "/autolog-" + channel + ".txt"
+
+	f, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0660)
+	if err != nil {
+		log.Printf("Error opening %s for logging: %s", filename,
+			err.Error())
+		return
+	}
+	defer f.Close()
+
+	_, err = f.WriteString(line + "\n")
+	if err != nil {
+		log.Printf("Error writing to %s for logging: %s", filename,
+			err.Error())
+		return
+	}
+}
+
 func start() error {
 	log.Printf("initialize markov chain...")
-	chain = initializeMarkovChain()
+	chain = initializeMarkovChain(cfg.MarkovDataPath)
 
 	log.Printf("connecting...")
 	conn, err := connect()
@@ -49,6 +68,8 @@ func start() error {
 	for {
 		select {
 		case data := <-IRCIncoming:
+			var line string
+
 			// Incoming IRC traffic.
 			privmsg := NewPrivMsg(data, cfg.IRCNickname)
 			if privmsg == nil {
@@ -56,10 +77,13 @@ func start() error {
 			}
 
 			if privmsg.Action {
-				chain.AddLine("ACTION " + privmsg.Body)
+				line = "ACTION " + privmsg.Body
 			} else {
-				chain.AddLine(privmsg.Body)
+				line = privmsg.Body
 			}
+
+			chain.AddLine(line)
+			logLine(privmsg.ReplyTo, line)
 
 			msg := NewMessageFromPrivMsg(privmsg)
 			if msg == nil {

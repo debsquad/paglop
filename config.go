@@ -46,6 +46,12 @@ type Cfg struct {
 
 	// If defined, start a web server to list the aliases (e.g. :8989)
 	HTTPServerAddress string
+
+	// MarkovDataPath defines the directory containing all the markov chain
+	// data sets to load.  This is also where the bot will save all the
+	// data it reads from the configured channels, assuming the file
+	// extentions are ".txt".
+	MarkovDataPath string
 }
 
 var (
@@ -83,6 +89,10 @@ func parseConfigFile() error {
 
 	if cfg.IRCServer == "" {
 		return errors.New("'IRCServer' is not defined")
+	}
+
+	if cfg.MarkovDataPath == "" {
+		return errors.New("'MarkovDataPath' is not defined")
 	}
 
 	return nil
