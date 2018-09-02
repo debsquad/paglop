@@ -6,7 +6,10 @@ package main
 import (
 	"log"
 	"os"
+	"regexp"
 	"strings"
+
+	"github.com/thoj/go-ircevent"
 )
 
 // These channels represent the lines coming and going to the IRC server (from
@@ -15,21 +18,16 @@ var (
 	IRCIncoming   = make(chan string)
 	IRCOutgoing   = make(chan string)
 	IRCDisconnect = make(chan string)
+
+	conn *irc.Connection
+
+	// Detect if we are addressed to.
+	reAddressed = regexp.MustCompile(`^(\w+)[:,.]*\s*(.*)`)
 )
 
 var (
 	chain *Chain
 )
-
-func handleMsg(msg *Message) {
-	output := chain.GenerateOnTopic(32, msg.Body)
-	if strings.HasPrefix(output, "ACTION ") {
-		output = output[8:]
-		privAction(msg.ReplyTo, output)
-	} else {
-		privMsg(msg.ReplyTo, output)
-	}
-}
 
 func logLine(channel, line string) {
 	filename := cfg.MarkovDataPath + "/autolog-" + channel + ".txt"
@@ -50,55 +48,39 @@ func logLine(channel, line string) {
 	}
 }
 
-func start() error {
-	log.Printf("initialize markov chain...")
-	chain = initializeMarkovChain(cfg.MarkovDataPath)
+// MessageHandler is called for every single message, it records sentences and
+// makes the bot respond if the sentence is addressed at the bot.
+func MessageHandler(nick, target, body string) {
+	// We will only respond to a user if they address us, also we won't
+	// increment the markov chain with what people tell us since it's often
+	// gibberish.
+	tokens := reAddressed.FindStringSubmatch(body)
+	addressed := tokens != nil && tokens[1] == cfg.IRCNickname
+	if !addressed {
+		addToMarkov(target, body)
+		return
+	}
+	body = tokens[2]
 
-	log.Printf("connecting...")
-	conn, err := connect()
-	if err != nil {
-		return err
+	// Avoid (up|down)votes from generating a chain.
+	if body == "++" || body == "--" {
+		return
 	}
 
-	go connectionReader(conn, IRCIncoming, IRCDisconnect)
-	go connectionWriter(conn, IRCOutgoing)
+	output := chain.GenerateOnTopic(10, body)
 
-	autojoin()
-
-	for {
-		select {
-		case data := <-IRCIncoming:
-			var line string
-
-			// Incoming IRC traffic.
-			privmsg := NewPrivMsg(data, cfg.IRCNickname)
-			if privmsg == nil {
-				continue
-			}
-
-			if privmsg.Action {
-				line = "ACTION " + privmsg.Body
-			} else {
-				line = privmsg.Body
-			}
-
-			chain.AddLine(line)
-			logLine(privmsg.ReplyTo, line)
-
-			msg := NewMessageFromPrivMsg(privmsg)
-			if msg == nil {
-				continue
-			}
-
-			handleMsg(msg)
-		case data := <-IRCDisconnect:
-			// Server has disconnected, we're done.
-			log.Printf("Disconnected: %s", data)
-			return nil
-		}
+	// Handle possibly generated ACTIONs.
+	if strings.HasPrefix(output, "ACTION ") {
+		output = output[7:]
+		conn.Action(target, output)
+	} else {
+		conn.Privmsg(target, output)
 	}
+}
 
-	return nil
+func addToMarkov(target, body string) {
+	chain.AddLine(body)
+	logLine(target, body)
 }
 
 func main() {
@@ -108,11 +90,33 @@ func main() {
 		log.Fatal("config error: ", err.Error())
 	}
 
-	log.Printf("starting %s", cfg.IRCNickname)
-	err = start()
+	log.Printf("initialize markov chain...")
+	chain = initializeMarkovChain(cfg.MarkovDataPath)
+
+	conn = irc.IRC(cfg.IRCNickname, cfg.IRCNickname)
+	conn.VerboseCallbackHandler = true
+	conn.Debug = true
+	err = conn.Connect(cfg.IRCServer)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	conn.AddCallback("001", func(e *irc.Event) {
+		for _, c := range cfg.GetAutoJoinChannels() {
+			conn.Join(c)
+		}
+	})
+
+	conn.AddCallback("PRIVMSG", func(e *irc.Event) {
+		MessageHandler(e.Nick, e.Arguments[0], e.Message())
+	})
+	conn.AddCallback("CTCP_ACTION", func(e *irc.Event) {
+		body := "ACTION " + e.Message()
+		target := e.Arguments[0]
+		addToMarkov(target, body)
+	})
+
+	conn.Loop()
 
 	os.Exit(0)
 }

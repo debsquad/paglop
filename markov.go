@@ -47,10 +47,22 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
 )
+
+type ScoredWord struct {
+	Word  string
+	Score uint64
+}
+
+type ByScore []ScoredWord
+
+func (a ByScore) Len() int           { return len(a) }
+func (a ByScore) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByScore) Less(i, j int) bool { return a[i].Score < a[j].Score }
 
 // Leader is a Markov chain prefix of one or more words.
 type Leader []string
@@ -171,6 +183,10 @@ func (chain *Chain) GetRandomTupleForWord(word string) string {
 	var tuples []string
 
 	for t := range chain.forward {
+		// Avoid any single word tuples.
+		if strings.TrimSpace(t) == word {
+			continue
+		}
 		if strings.Contains(t, word) {
 			tuples = append(tuples, t)
 		}
@@ -185,21 +201,29 @@ func (chain *Chain) GetRandomTupleForWord(word string) string {
 	return tuples[rand.Intn(len(tuples))]
 }
 
-// GetLessCommonWord picks the least common word from the given sentence.  This
-// is useful when trying to identify the subject of a sentence.
-func (chain *Chain) GetLessCommonWord(sentence string) string {
-	var lowest uint64 = 9999999
-	var chosen string
+// GetScoredWords returns a list of the words in the given sentence along with
+// their popularity score from the markov chain data.
+func (chain *Chain) GetScoredWords(sentence string) []ScoredWord {
+	var words []ScoredWord
 
 	for _, word := range strings.Fields(sentence) {
 		score := chain.words[word]
-		if score > 0 && score < lowest {
-			lowest = score
-			chosen = word
-		}
+		words = append(words, ScoredWord{word, score})
 	}
 
-	return chosen
+	return words
+}
+
+// GetWordsByPopularity returns a list of the words in this sentence sorted by
+// popularity.  Small words are filtered out.
+func (chain *Chain) GetWordsByPopularity(sentence string) []string {
+	var words []string
+	scoredWords := chain.GetScoredWords(sentence)
+	sort.Sort(ByScore(scoredWords))
+	for _, sw := range scoredWords {
+		words = append(words, sw.Word)
+	}
+	return words
 }
 
 // GenerateCore returns a list of at most n words generated from Chain.
@@ -264,12 +288,9 @@ func (chain *Chain) Generate(n int) string {
 	return strings.Join(words, " ")
 }
 
-// GenerateOnTopic returns a string of at most n words generated from Chain
-// using the least common word in the provided sentence.
-func (chain *Chain) GenerateOnTopic(n int, sentence string) string {
-	word := chain.GetLessCommonWord(sentence)
-	log.Printf("Chosen word: %s", word)
-
+// GenerateFromWord returns a string of at most 2*n words generated from the
+// Markov chain using the given word as base.
+func (chain *Chain) GenerateFromWord(n int, word string) string {
 	tuple := chain.GetRandomTupleForWord(word)
 	log.Printf("Chosen tuple: %s", tuple)
 
@@ -282,7 +303,31 @@ func (chain *Chain) GenerateOnTopic(n int, sentence string) string {
 	}
 
 	words := append(bwords, fwords...)
-	return strings.Join(words, " ")
+	genSentence := strings.Join(words, " ")
+
+	return genSentence
+}
+
+// GenerateOnTopic returns a string of at most n words generated from Chain
+// using the least common word in the provided sentence.
+func (chain *Chain) GenerateOnTopic(n int, sentence string) string {
+	var newSentence string
+	words := chain.GetWordsByPopularity(sentence)
+
+	for _, w := range words {
+		log.Printf("Chosen word: %s", w)
+
+		newSentence = chain.GenerateFromWord(n, w)
+		spaceCount := strings.Count(newSentence, " ")
+
+		if newSentence != sentence && spaceCount > 0 {
+			break
+		}
+
+		log.Printf("Same sentence generated, retrying...")
+	}
+
+	return newSentence
 }
 
 // GenerateForward generates words forward in the sentence.

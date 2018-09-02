@@ -2,7 +2,8 @@
 	"IRCServer": "irc.oftc.net:6667",
 	"IRCNickname": "paglop",
 	"Channels": ["#debsquad"],
-	"Ignore": ["douchebot"],
-	"TestMode": false
+	"Ignore": ["alfred"],
+	"TestMode": false,
+	"MarkovDataPath": "/home/tamentis/projects/paglop/data"
 }
 
